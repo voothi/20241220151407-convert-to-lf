@@ -87,16 +87,20 @@ def convert_to_lf(file_path, encoding=None):
     if encoding is None:
         encoding = detect_encoding(file_path)
     if not encoding:
-        return
+        return False
 
     with open(file_path, 'r', encoding=encoding, newline='') as f:
         content = f.read()
     
     # Replace CRLF (Windows) with LF (Unix)
+    if '\r\n' not in content:
+        return False
+
     content = content.replace('\r\n', '\n')
 
     with open(file_path, 'w', encoding=encoding, newline='\n') as f:
         f.write(content)
+    return True
 
 def is_text_file(file_path):
     return detect_encoding(file_path) is not None
@@ -120,6 +124,10 @@ def should_exclude(name, patterns):
     return False
 
 def traverse_directory(directory, exclude_dirs, exclude_files):
+    total_files = 0
+    converted_files = 0
+    skipped_files = 0
+
     for root, dirs, files in os.walk(directory):
         # Modify dirs in-place to prevent traversing unwanted metadata/dependency directories
         dirs[:] = [d for d in dirs if not should_exclude(d, exclude_dirs)]
@@ -128,10 +136,22 @@ def traverse_directory(directory, exclude_dirs, exclude_files):
             if should_exclude(file, exclude_files):
                 continue
             file_path = os.path.join(root, file)
+            total_files += 1
             encoding = detect_encoding(file_path)
             if encoding:
-                print(f'Converting {file_path} to LF line endings ({encoding})...')
-                convert_to_lf(file_path, encoding)
+                changed = convert_to_lf(file_path, encoding)
+                if changed:
+                    print(f'[✓] Converted: {file_path} ({encoding})')
+                    converted_files += 1
+                else:
+                    skipped_files += 1
+            else:
+                skipped_files += 1
+
+    print("\n--- Summary ---")
+    print(f"Total files scanned:    {total_files}")
+    print(f"Files normalized (LF):  {converted_files}")
+    print(f"Files unchanged/binary: {skipped_files}")
 
 def main():
     parser = argparse.ArgumentParser(
