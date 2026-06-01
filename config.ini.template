@@ -1,3 +1,6 @@
 [Traversal]
-# Comma-separated list of directory names to completely ignore during recursive scanning
-exclude_dirs = .git, .history, .idea, node_modules
+# Comma-separated list of glob/wildcard patterns for directories to completely ignore
+exclude_dirs = .*, node_modules, build, dist
+
+# Comma-separated list of glob/wildcard patterns for files to ignore
+exclude_files = .*, *.log, *.tmp
