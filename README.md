@@ -1,6 +1,6 @@
 # LF Line Ending Converter Utility
 
-[![Version](https://img.shields.io/badge/version-v1.0.0-green)](https://github.com/voothi/20241220151407-convert-to-lf)
+[![Version](https://img.shields.io/badge/version-v1.0.2-green)](https://github.com/voothi/20241220151407-convert-to-lf)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A premium, lightweight Python command-line utility to recursively traverse a specified directory, automatically detect text files, and seamlessly normalize Windows-style CRLF line endings to Unix-standard LF line endings.
