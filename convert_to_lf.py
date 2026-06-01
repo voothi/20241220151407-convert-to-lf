@@ -42,8 +42,11 @@ def traverse_directory(directory, exclude_dirs):
     exclude_set = set(exclude_dirs)
     for root, dirs, files in os.walk(directory):
         # Modify dirs in-place to prevent traversing unwanted metadata/dependency directories
-        dirs[:] = [d for d in dirs if d not in exclude_set]
+        dirs[:] = [d for d in dirs if d not in exclude_set and not d.startswith('.')]
         for file in files:
+            # Skip dotfiles and excluded files
+            if file.startswith('.') or file in exclude_set:
+                continue
             file_path = os.path.join(root, file)
             if is_text_file(file_path):
                 print(f'Converting {file_path} to LF line endings...')
