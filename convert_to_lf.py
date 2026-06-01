@@ -25,24 +25,81 @@ def get_config(config_path: str = "config.ini") -> dict:
         "exclude_files": exclude_files
     }
 
-def convert_to_lf(file_path):
-    with open(file_path, 'rb') as f:
+def detect_encoding(file_path):
+    """
+    Detects the encoding of the file by reading BOMs or analyzing a block.
+    Returns the encoding string (e.g. 'utf-8', 'utf-16-le', 'cp1252') or None if binary/unknown.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(1024)
+    except IOError:
+        return None
+
+    if not chunk:
+        return 'utf-8' # Empty file is treated as utf-8
+
+    # 1. Check for BOMs
+    if chunk.startswith(b'\xef\xbb\xbf'):
+        return 'utf-8-sig'
+    if chunk.startswith(b'\xff\xfe\x00\x00'):
+        return 'utf-32-le'
+    if chunk.startswith(b'\x00\x00\xfe\xff'):
+        return 'utf-32-be'
+    if chunk.startswith(b'\xff\xfe'):
+        return 'utf-16-le'
+    if chunk.startswith(b'\xfe\xff'):
+        return 'utf-16-be'
+
+    # 2. Check for null bytes (likely binary or UTF-16/32 without BOM)
+    if b'\x00' in chunk:
+        # Check if it could be UTF-16 without BOM
+        for enc in ('utf-16-le', 'utf-16-be'):
+            try:
+                decoded = chunk.decode(enc)
+                # Count control characters to make sure it's not binary
+                control_chars = sum(1 for c in decoded if c < ' ' and c not in '\r\n\t')
+                if len(decoded) > 0 and control_chars / len(decoded) < 0.1:
+                    return enc
+            except UnicodeDecodeError:
+                pass
+        return None # Considered binary
+
+    # 3. Try to decode as UTF-8
+    try:
+        chunk.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        pass
+
+    # 4. Fallback to CP1252 / ANSI (common legacy Windows text encoding)
+    try:
+        decoded = chunk.decode('cp1252', errors='replace')
+        control_chars = sum(1 for c in decoded if c < ' ' and c not in '\r\n\t')
+        if len(decoded) > 0 and control_chars / len(decoded) < 0.1:
+            return 'cp1252'
+    except Exception:
+        pass
+
+    return None
+
+def convert_to_lf(file_path, encoding=None):
+    if encoding is None:
+        encoding = detect_encoding(file_path)
+    if not encoding:
+        return
+
+    with open(file_path, 'r', encoding=encoding, newline='') as f:
         content = f.read()
     
     # Replace CRLF (Windows) with LF (Unix)
-    content = content.replace(b'\r\n', b'\n')
+    content = content.replace('\r\n', '\n')
 
-    with open(file_path, 'wb') as f:
+    with open(file_path, 'w', encoding=encoding, newline='\n') as f:
         f.write(content)
 
 def is_text_file(file_path):
-    # A simple check to see if the file is text
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            f.read()
-        return True
-    except:
-        return False
+    return detect_encoding(file_path) is not None
 
 def should_exclude(name, patterns):
     """
@@ -71,9 +128,10 @@ def traverse_directory(directory, exclude_dirs, exclude_files):
             if should_exclude(file, exclude_files):
                 continue
             file_path = os.path.join(root, file)
-            if is_text_file(file_path):
-                print(f'Converting {file_path} to LF line endings...')
-                convert_to_lf(file_path)
+            encoding = detect_encoding(file_path)
+            if encoding:
+                print(f'Converting {file_path} to LF line endings ({encoding})...')
+                convert_to_lf(file_path, encoding)
 
 def main():
     parser = argparse.ArgumentParser(

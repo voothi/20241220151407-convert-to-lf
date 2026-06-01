@@ -12,7 +12,8 @@ from convert_to_lf import (
     is_text_file,
     should_exclude,
     get_config,
-    traverse_directory
+    traverse_directory,
+    detect_encoding
 )
 
 class TestConvertToLF(unittest.TestCase):
@@ -24,19 +25,67 @@ class TestConvertToLF(unittest.TestCase):
         # Clean up the temporary directory
         shutil.rmtree(self.test_dir)
 
+    def test_detect_encoding(self):
+        # UTF-8 without BOM
+        utf8_file = os.path.join(self.test_dir, "utf8.txt")
+        with open(utf8_file, "w", encoding="utf-8") as f:
+            f.write("Hello World")
+        self.assertEqual(detect_encoding(utf8_file), "utf-8")
+
+        # UTF-8 with BOM
+        utf8_bom_file = os.path.join(self.test_dir, "utf8_bom.txt")
+        with open(utf8_bom_file, "w", encoding="utf-8-sig") as f:
+            f.write("Hello World")
+        self.assertEqual(detect_encoding(utf8_bom_file), "utf-8-sig")
+
+        # UTF-16 LE
+        utf16le_file = os.path.join(self.test_dir, "utf16le.txt")
+        with open(utf16le_file, "w", encoding="utf-16-le") as f:
+            f.write("\ufeffHello World") # writing BOM explicitly
+        self.assertEqual(detect_encoding(utf16le_file), "utf-16-le")
+
+        # UTF-16 BE
+        utf16be_file = os.path.join(self.test_dir, "utf16be.txt")
+        with open(utf16be_file, "w", encoding="utf-16-be") as f:
+            f.write("\ufeffHello World") # writing BOM explicitly
+        self.assertEqual(detect_encoding(utf16be_file), "utf-16-be")
+
+        # CP1252 (legacy ANSI)
+        cp1252_file = os.path.join(self.test_dir, "cp1252.txt")
+        with open(cp1252_file, "wb") as f:
+            f.write(b"Hello \xe9 (e with acute)")
+        self.assertEqual(detect_encoding(cp1252_file), "cp1252")
+
+        # Binary file
+        binary_file = os.path.join(self.test_dir, "image.png")
+        with open(binary_file, 'wb') as f:
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xff")
+        self.assertIsNone(detect_encoding(binary_file))
+
     def test_convert_to_lf(self):
-        test_file = os.path.join(self.test_dir, "test.txt")
-        # Write CRLF text
-        with open(test_file, 'wb') as f:
+        # Test UTF-8 conversion
+        utf8_file = os.path.join(self.test_dir, "test_utf8.txt")
+        with open(utf8_file, 'wb') as f:
             f.write(b"Hello\r\nWorld\r\n")
+        convert_to_lf(utf8_file)
+        with open(utf8_file, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\nWorld\n")
 
-        # Convert
-        convert_to_lf(test_file)
+        # Test UTF-16 LE conversion (crucial check for correct byte-level handling)
+        utf16le_file = os.path.join(self.test_dir, "test_utf16le.txt")
+        with open(utf16le_file, 'w', encoding='utf-16-le') as f:
+            f.write("\ufeffHello\r\nWorld\r\n")
+        convert_to_lf(utf16le_file)
+        with open(utf16le_file, 'r', encoding='utf-16-le') as f:
+            self.assertEqual(f.read(), "\ufeffHello\nWorld\n")
 
-        # Verify it converted to LF
-        with open(test_file, 'rb') as f:
-            content = f.read()
-        self.assertEqual(content, b"Hello\nWorld\n")
+        # Test CP1252 conversion
+        cp1252_file = os.path.join(self.test_dir, "test_cp1252.txt")
+        with open(cp1252_file, 'wb') as f:
+            f.write(b"Hello\r\n\xe9\r\n")
+        convert_to_lf(cp1252_file)
+        with open(cp1252_file, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\n\xe9\n")
 
     def test_is_text_file(self):
         # Text file
@@ -45,7 +94,7 @@ class TestConvertToLF(unittest.TestCase):
             f.write("Some standard text content")
         self.assertTrue(is_text_file(text_file))
 
-        # Binary file (contains invalid UTF-8 sequences)
+        # Binary file
         binary_file = os.path.join(self.test_dir, "image.png")
         with open(binary_file, 'wb') as f:
             f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xff")
