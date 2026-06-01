@@ -89,7 +89,7 @@ def convert_to_lf(file_path, encoding=None):
     if not encoding:
         return False
 
-    with open(file_path, 'r', encoding=encoding, newline='') as f:
+    with open(file_path, 'r', encoding=encoding, newline='', errors='replace') as f:
         content = f.read()
     
     # Replace CRLF (Windows) with LF (Unix)
