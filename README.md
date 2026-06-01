@@ -20,14 +20,14 @@ A premium, lightweight Python command-line utility to recursively traverse a spe
 - **Intelligent Text Detection**: Performs a clean UTF-8 validation check to automatically isolate text files (like `.md`, `.txt`, `.py`, `.js`, etc.) and prevent any corruption of binary assets (like images, archives, or PDFs).
 - **In-Place Normalization**: Replaces CRLF (`\r\n`) line endings with Unix-style LF (`\n`) directly in the files safely.
 - **Modern Gitattributes Integration**: Complements `.gitattributes` configuration to ensure consistent multi-platform Line Ending settings.
-- **Flexible Globbing Exclusions**: Skips administrative metadata, development directories, and temporary files using standard wildcard glob patterns (e.g. `.*`, `*.log`, `node_modules`, `build`).
+- **Flexible Globbing & Regex Exclusions**: Skips administrative metadata, development directories, and temporary files using standard wildcard glob patterns (e.g. `.*`, `*.log`, `node_modules`) or advanced **Regular Expressions** using the `re:` prefix.
 
 ---
 
 ## Project Structure
 ```text
 20241220151407-convert-to-lf/
-├── config.ini             # Traversal glob/wildcard exclusion settings
+├── config.ini             # Traversal glob & regex exclusion settings
 ├── config.ini.template    # Configuration template
 ├── .gitattributes         # Global LF normalization & asset protection settings
 ├── .gitignore             # Standard IDE and output file exclusions
@@ -41,7 +41,7 @@ A premium, lightweight Python command-line utility to recursively traverse a spe
 ## Configuration & Git Integration
 
 ### 1. The `config.ini` Settings
-The utility automatically loads directories and files to ignore using glob/wildcard patterns.
+The utility automatically loads directories and files to ignore using glob/wildcard patterns or `re:`-prefixed regular expressions.
 
 Default `config.ini` configuration:
 ```ini
@@ -96,24 +96,24 @@ You can customize the exclusions and configurations dynamically via CLI argument
   ```
 
 * **Additional Directory Exclusions (`-e` / `--exclude-dirs`)**:
-  Provide a comma-separated list of additional glob patterns for directories to skip:
+  Provide glob patterns or regular expressions (`re:<regex>`) for directories to skip:
   ```powershell
-  python convert_to_lf.py "U:\voothi\20241220151407-convert-to-lf" --exclude-dirs "venv,tmp*,out"
+  python convert_to_lf.py "U:\voothi\20241220151407-convert-to-lf" --exclude-dirs "venv,tmp*,re:^build_\d+$"
   ```
 
 * **Additional File Exclusions (`-f` / `--exclude-files`)**:
-  Provide a comma-separated list of additional glob patterns for files to skip:
+  Provide glob patterns or regular expressions (`re:<regex>`) for files to skip:
   ```powershell
-  python convert_to_lf.py "U:\voothi\20241220151407-convert-to-lf" --exclude-files "*.bak,*.cache"
+  python convert_to_lf.py "U:\voothi\20241220151407-convert-to-lf" --exclude-files "*.bak,re:^cache_.*\.json$"
   ```
 
 ---
 
 ## How it Works
 
-1. **Configure**: Resolves glob configurations from `config.ini`, then incorporates any dynamic CLI `--exclude-dirs` and `--exclude-files` arguments.
-2. **Traverse**: The script uses `os.walk` recursively on the target directory, instantly pruning any directories matching the directory exclusion patterns using `fnmatch` matching.
-3. **Filter**: Files are checked against the file glob patterns (like `.*` or `*.log`). If matched, they are completely bypassed.
+1. **Configure**: Resolves glob/regex configurations from `config.ini`, then incorporates any dynamic CLI `--exclude-dirs` and `--exclude-files` arguments.
+2. **Traverse**: The script uses `os.walk` recursively on the target directory, instantly pruning any directories matching the directory exclusion patterns using `fnmatch` (for globs) or Python's standard `re` engine (for patterns prefixed with `re:`).
+3. **Filter**: Files are checked against the file patterns. If matched by a glob or regular expression, they are completely bypassed.
 4. **Detect**: `is_text_file` reads files to verify if they decode cleanly as UTF-8. Non-text/binary files are safely bypassed.
 5. **Convert**: Normalizes CRLF (`\r\n`) sequences to Unix LF (`\n`) and rewrites the file in-place.
 

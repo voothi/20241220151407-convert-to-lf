@@ -3,6 +3,7 @@ import sys
 import argparse
 import configparser
 import fnmatch
+import re
 
 def get_config(config_path: str = "config.ini") -> dict:
     """
@@ -45,9 +46,21 @@ def is_text_file(file_path):
 
 def should_exclude(name, patterns):
     """
-    Checks if a name matches any of the glob/wildcard patterns.
+    Checks if a name matches any of the glob/wildcard patterns or regular expressions.
+    Patterns starting with 're:' or 'regex:' are treated as regular expressions.
     """
-    return any(fnmatch.fnmatch(name, pattern) for pattern in patterns)
+    for pattern in patterns:
+        if pattern.startswith("re:") or pattern.startswith("regex:"):
+            regex_pattern = pattern.split(":", 1)[1]
+            try:
+                if re.search(regex_pattern, name):
+                    return True
+            except re.error as exc:
+                print(f"[!] Warning: Invalid regex pattern '{pattern}': {exc}", file=sys.stderr)
+        else:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+    return False
 
 def traverse_directory(directory, exclude_dirs, exclude_files):
     for root, dirs, files in os.walk(directory):
@@ -76,11 +89,11 @@ def main():
     )
     parser.add_argument(
         "-e", "--exclude-dirs", type=str,
-        help="Comma-separated list of additional glob patterns for directories to exclude."
+        help="Comma-separated list of additional glob patterns or 're:'-prefixed regexes for directories to exclude."
     )
     parser.add_argument(
         "-f", "--exclude-files", type=str,
-        help="Comma-separated list of additional glob patterns for files to exclude."
+        help="Comma-separated list of additional glob patterns or 're:'-prefixed regexes for files to exclude."
     )
     
     args = parser.parse_args()
