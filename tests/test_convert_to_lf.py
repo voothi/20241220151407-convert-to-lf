@@ -253,5 +253,15 @@ class TestConvertToLF(unittest.TestCase):
             with open(fpath, 'rb') as f:
                 self.assertEqual(f.read(), b"Line1\nLine2\n")
 
+    def test_get_config_options(self):
+        # Create a temporary config.ini with Settings
+        config_path = os.path.join(self.test_dir, "test_config.ini")
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write("[Settings]\nstrip_bom = true\nlist = all\n")
+            
+        config = get_config(config_path)
+        self.assertTrue(config["strip_bom"])
+        self.assertEqual(config["list"], "all")
+
 if __name__ == "__main__":
     unittest.main()

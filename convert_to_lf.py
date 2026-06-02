@@ -20,9 +20,14 @@ def get_config(config_path: str = "config.ini") -> dict:
     exclude_dirs = [d.strip() for d in exclude_dirs_str.split(",") if d.strip()]
     exclude_files = [f.strip() for f in exclude_files_str.split(",") if f.strip()]
     
+    strip_bom = config.getboolean("Settings", "strip_bom", fallback=False)
+    list_mode = config.get("Settings", "list", fallback="changed")
+    
     return {
         "exclude_dirs": exclude_dirs,
-        "exclude_files": exclude_files
+        "exclude_files": exclude_files,
+        "strip_bom": strip_bom,
+        "list": list_mode
     }
 
 def detect_encoding(file_path):
@@ -201,12 +206,12 @@ def main():
         help="Comma-separated list of additional glob patterns or 're:'-prefixed regexes for files to exclude."
     )
     parser.add_argument(
-        "--strip-bom", action="store_true",
+        "--strip-bom", action=argparse.BooleanOptionalAction, default=None,
         help="Convert UTF-8 files with Byte Order Mark (BOM) signature to standard UTF-8 (without BOM)."
     )
     parser.add_argument(
-        "-l", "--list", type=str, choices=["changed", "all", "none"], default="changed",
-        help="Flexible listing options: 'changed' lists only converted files (default), 'all' lists everything, 'none' suppresses individual output."
+        "-l", "--list", type=str, choices=["changed", "all", "none"], default=None,
+        help="Flexible listing options: 'changed' (default) lists only converted files, 'all' lists everything, 'none' suppresses individual output."
     )
     
     args = parser.parse_args()
@@ -238,13 +243,17 @@ def main():
         extra_file_excludes = [f.strip() for f in args.exclude_files.split(",") if f.strip()]
         exclude_files.update(extra_file_excludes)
 
+    # CLI arguments override config.ini options
+    strip_bom = args.strip_bom if args.strip_bom is not None else config["strip_bom"]
+    list_mode = args.list if args.list is not None else config["list"]
+
     print(f"Scanning: {directory_to_scan}")
     print(f"Excluding directories matching patterns: {', '.join(sorted(exclude_dirs))}")
     print(f"Excluding files matching patterns:       {', '.join(sorted(exclude_files))}")
 
     traverse_directory(
         directory_to_scan, exclude_dirs, exclude_files,
-        strip_bom=args.strip_bom, list_mode=args.list
+        strip_bom=strip_bom, list_mode=list_mode
     )
     print("Conversion complete!")
 

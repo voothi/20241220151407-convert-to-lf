@@ -4,3 +4,10 @@ exclude_dirs = .*, node_modules, build, dist
 
 # Comma-separated list of glob/wildcard patterns for files to ignore
 exclude_files = .*, *.log, *.tmp
+
+[Settings]
+# If true, converts UTF-8 files with Byte Order Mark (BOM) signature to standard UTF-8 (without BOM)
+strip_bom = false
+
+# Flexible listing options: 'changed' (only print modified files), 'all' (print all scanned files), 'none' (suppress output)
+list = changed
