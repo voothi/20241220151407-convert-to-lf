@@ -100,20 +100,20 @@ def convert_to_lf(file_path, encoding=None, strip_bom=False):
     if encoding is None:
         encoding = detect_encoding(file_path)
     if not encoding:
-        return False
+        return False, False
 
     try:
         with open(file_path, 'r', encoding=encoding, newline='') as f:
             content = f.read()
     except (UnicodeDecodeError, LookupError):
-        return False
+        return False, False
     
     # Check if conversion is needed
     has_crlf = '\r\n' in content
     has_bom = (encoding == 'utf-8-sig')
 
     if not has_crlf and not (has_bom and strip_bom):
-        return False
+        return False, False
 
     if has_crlf:
         content = content.replace('\r\n', '\n')
@@ -124,8 +124,8 @@ def convert_to_lf(file_path, encoding=None, strip_bom=False):
         with open(file_path, 'w', encoding=write_encoding, newline='\n') as f:
             f.write(content)
     except (UnicodeEncodeError, LookupError):
-        return False
-    return True
+        return False, False
+    return has_crlf, (has_bom and strip_bom)
 
 def is_text_file(file_path):
     return detect_encoding(file_path) is not None
@@ -151,6 +151,7 @@ def should_exclude(name, patterns):
 def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, list_mode="changed"):
     total_files = 0
     converted_files = 0
+    bom_stripped_files = 0
     skipped_files = 0
 
     for root, dirs, files in os.walk(directory):
@@ -165,11 +166,14 @@ def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, 
             encoding = detect_encoding(file_path)
             
             if encoding:
-                changed = convert_to_lf(file_path, encoding, strip_bom=strip_bom)
-                if changed:
-                    converted_files += 1
+                lf_changed, bom_stripped = convert_to_lf(file_path, encoding, strip_bom=strip_bom)
+                if lf_changed or bom_stripped:
+                    if lf_changed:
+                        converted_files += 1
+                    if bom_stripped:
+                        bom_stripped_files += 1
                     if list_mode in ('changed', 'all'):
-                        enc_str = f"{encoding} -> utf-8" if (encoding == "utf-8-sig" and strip_bom) else encoding
+                        enc_str = f"{encoding} -> utf-8" if bom_stripped else encoding
                         print(f'[✓] Converted: {file_path} ({enc_str})')
                 else:
                     skipped_files += 1
@@ -183,6 +187,7 @@ def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, 
     print("\n--- Summary ---")
     print(f"Total files scanned:    {total_files}")
     print(f"Files normalized (LF):  {converted_files}")
+    print(f"BOMs stripped:          {bom_stripped_files}")
     print(f"Files unchanged/binary: {skipped_files}")
 
 def main():

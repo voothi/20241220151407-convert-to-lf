@@ -67,7 +67,7 @@ class TestConvertToLF(unittest.TestCase):
         utf8_file = os.path.join(self.test_dir, "test_utf8.txt")
         with open(utf8_file, 'wb') as f:
             f.write(b"Hello\r\nWorld\r\n")
-        convert_to_lf(utf8_file)
+        self.assertEqual(convert_to_lf(utf8_file), (True, False))
         with open(utf8_file, 'rb') as f:
             self.assertEqual(f.read(), b"Hello\nWorld\n")
 
@@ -75,7 +75,7 @@ class TestConvertToLF(unittest.TestCase):
         utf16le_file = os.path.join(self.test_dir, "test_utf16le.txt")
         with open(utf16le_file, 'w', encoding='utf-16-le') as f:
             f.write("\ufeffHello\r\nWorld\r\n")
-        convert_to_lf(utf16le_file)
+        self.assertEqual(convert_to_lf(utf16le_file), (True, False))
         with open(utf16le_file, 'r', encoding='utf-16-le') as f:
             self.assertEqual(f.read(), "\ufeffHello\nWorld\n")
 
@@ -83,7 +83,7 @@ class TestConvertToLF(unittest.TestCase):
         cp1252_file = os.path.join(self.test_dir, "test_cp1252.txt")
         with open(cp1252_file, 'wb') as f:
             f.write(b"Hello\r\n\xe9\r\n")
-        convert_to_lf(cp1252_file)
+        self.assertEqual(convert_to_lf(cp1252_file), (True, False))
         with open(cp1252_file, 'rb') as f:
             self.assertEqual(f.read(), b"Hello\n\xe9\n")
 
@@ -93,7 +93,7 @@ class TestConvertToLF(unittest.TestCase):
         with open(utf8_bom_crlf, 'wb') as f:
             f.write(b"\xef\xbb\xbfHello\r\nWorld\r\n")
         
-        self.assertTrue(convert_to_lf(utf8_bom_crlf, strip_bom=True))
+        self.assertEqual(convert_to_lf(utf8_bom_crlf, strip_bom=True), (True, True))
         with open(utf8_bom_crlf, 'rb') as f:
             self.assertEqual(f.read(), b"Hello\nWorld\n")
 
@@ -102,7 +102,7 @@ class TestConvertToLF(unittest.TestCase):
         with open(utf8_bom_lf, 'wb') as f:
             f.write(b"\xef\xbb\xbfHello\nWorld\n")
         
-        self.assertTrue(convert_to_lf(utf8_bom_lf, strip_bom=True))
+        self.assertEqual(convert_to_lf(utf8_bom_lf, strip_bom=True), (False, True))
         with open(utf8_bom_lf, 'rb') as f:
             self.assertEqual(f.read(), b"Hello\nWorld\n")
 
@@ -111,7 +111,7 @@ class TestConvertToLF(unittest.TestCase):
         with open(utf8_bom_keep, 'wb') as f:
             f.write(b"\xef\xbb\xbfHello\r\nWorld\r\n")
         
-        self.assertTrue(convert_to_lf(utf8_bom_keep, strip_bom=False))
+        self.assertEqual(convert_to_lf(utf8_bom_keep, strip_bom=False), (True, False))
         with open(utf8_bom_keep, 'rb') as f:
             self.assertEqual(f.read(), b"\xef\xbb\xbfHello\nWorld\n")
 
