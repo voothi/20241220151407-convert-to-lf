@@ -61,16 +61,24 @@ def detect_encoding(file_path):
                 control_chars = sum(1 for c in decoded if c < ' ' and c not in '\r\n\t')
                 if len(decoded) > 0 and control_chars / len(decoded) < 0.1:
                     return enc
-            except UnicodeDecodeError:
-                pass
+            except UnicodeDecodeError as e:
+                if e.reason == 'unexpected end of data' and e.end == len(chunk):
+                    try:
+                        decoded = chunk[:e.start].decode(enc)
+                        control_chars = sum(1 for c in decoded if c < ' ' and c not in '\r\n\t')
+                        if len(decoded) > 0 and control_chars / len(decoded) < 0.1:
+                            return enc
+                    except Exception:
+                        pass
         return None # Considered binary
 
     # 3. Try to decode as UTF-8
     try:
         chunk.decode('utf-8')
         return 'utf-8'
-    except UnicodeDecodeError:
-        pass
+    except UnicodeDecodeError as e:
+        if e.reason == 'unexpected end of data' and e.end == len(chunk):
+            return 'utf-8'
 
     # 4. Fallback to CP1252 / ANSI (common legacy Windows text encoding)
     try:
@@ -89,8 +97,11 @@ def convert_to_lf(file_path, encoding=None):
     if not encoding:
         return False
 
-    with open(file_path, 'r', encoding=encoding, newline='', errors='replace') as f:
-        content = f.read()
+    try:
+        with open(file_path, 'r', encoding=encoding, newline='') as f:
+            content = f.read()
+    except (UnicodeDecodeError, LookupError):
+        return False
     
     # Replace CRLF (Windows) with LF (Unix)
     if '\r\n' not in content:
@@ -98,8 +109,11 @@ def convert_to_lf(file_path, encoding=None):
 
     content = content.replace('\r\n', '\n')
 
-    with open(file_path, 'w', encoding=encoding, newline='\n') as f:
-        f.write(content)
+    try:
+        with open(file_path, 'w', encoding=encoding, newline='\n') as f:
+            f.write(content)
+    except (UnicodeEncodeError, LookupError):
+        return False
     return True
 
 def is_text_file(file_path):
