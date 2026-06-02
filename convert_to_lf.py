@@ -91,7 +91,7 @@ def detect_encoding(file_path):
 
     return None
 
-def convert_to_lf(file_path, encoding=None):
+def convert_to_lf(file_path, encoding=None, strip_bom=False):
     if encoding is None:
         encoding = detect_encoding(file_path)
     if not encoding:
@@ -103,14 +103,20 @@ def convert_to_lf(file_path, encoding=None):
     except (UnicodeDecodeError, LookupError):
         return False
     
-    # Replace CRLF (Windows) with LF (Unix)
-    if '\r\n' not in content:
+    # Check if conversion is needed
+    has_crlf = '\r\n' in content
+    has_bom = (encoding == 'utf-8-sig')
+
+    if not has_crlf and not (has_bom and strip_bom):
         return False
 
-    content = content.replace('\r\n', '\n')
+    if has_crlf:
+        content = content.replace('\r\n', '\n')
+
+    write_encoding = 'utf-8' if (has_bom and strip_bom) else encoding
 
     try:
-        with open(file_path, 'w', encoding=encoding, newline='\n') as f:
+        with open(file_path, 'w', encoding=write_encoding, newline='\n') as f:
             f.write(content)
     except (UnicodeEncodeError, LookupError):
         return False
@@ -137,7 +143,7 @@ def should_exclude(name, patterns):
                 return True
     return False
 
-def traverse_directory(directory, exclude_dirs, exclude_files):
+def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, list_mode="changed"):
     total_files = 0
     converted_files = 0
     skipped_files = 0
@@ -152,15 +158,22 @@ def traverse_directory(directory, exclude_dirs, exclude_files):
             file_path = os.path.join(root, file)
             total_files += 1
             encoding = detect_encoding(file_path)
+            
             if encoding:
-                changed = convert_to_lf(file_path, encoding)
+                changed = convert_to_lf(file_path, encoding, strip_bom=strip_bom)
                 if changed:
-                    print(f'[✓] Converted: {file_path} ({encoding})')
                     converted_files += 1
+                    if list_mode in ('changed', 'all'):
+                        enc_str = f"{encoding} -> utf-8" if (encoding == "utf-8-sig" and strip_bom) else encoding
+                        print(f'[✓] Converted: {file_path} ({enc_str})')
                 else:
                     skipped_files += 1
+                    if list_mode == 'all':
+                        print(f'[-] Unchanged: {file_path} ({encoding})')
             else:
                 skipped_files += 1
+                if list_mode == 'all':
+                    print(f'[S] Skipped/Binary: {file_path}')
 
     print("\n--- Summary ---")
     print(f"Total files scanned:    {total_files}")
@@ -186,6 +199,14 @@ def main():
     parser.add_argument(
         "-f", "--exclude-files", type=str,
         help="Comma-separated list of additional glob patterns or 're:'-prefixed regexes for files to exclude."
+    )
+    parser.add_argument(
+        "--strip-bom", action="store_true",
+        help="Convert UTF-8 files with Byte Order Mark (BOM) signature to standard UTF-8 (without BOM)."
+    )
+    parser.add_argument(
+        "-l", "--list", type=str, choices=["changed", "all", "none"], default="changed",
+        help="Flexible listing options: 'changed' lists only converted files (default), 'all' lists everything, 'none' suppresses individual output."
     )
     
     args = parser.parse_args()
@@ -221,7 +242,10 @@ def main():
     print(f"Excluding directories matching patterns: {', '.join(sorted(exclude_dirs))}")
     print(f"Excluding files matching patterns:       {', '.join(sorted(exclude_files))}")
 
-    traverse_directory(directory_to_scan, exclude_dirs, exclude_files)
+    traverse_directory(
+        directory_to_scan, exclude_dirs, exclude_files,
+        strip_bom=args.strip_bom, list_mode=args.list
+    )
     print("Conversion complete!")
 
 if __name__ == "__main__":

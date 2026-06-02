@@ -87,6 +87,83 @@ class TestConvertToLF(unittest.TestCase):
         with open(cp1252_file, 'rb') as f:
             self.assertEqual(f.read(), b"Hello\n\xe9\n")
 
+    def test_convert_to_lf_strip_bom(self):
+        # 1. UTF-8 with BOM and CRLF, strip_bom=True -> writes as standard UTF-8 (no BOM), LF
+        utf8_bom_crlf = os.path.join(self.test_dir, "bom_crlf.txt")
+        with open(utf8_bom_crlf, 'wb') as f:
+            f.write(b"\xef\xbb\xbfHello\r\nWorld\r\n")
+        
+        self.assertTrue(convert_to_lf(utf8_bom_crlf, strip_bom=True))
+        with open(utf8_bom_crlf, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\nWorld\n")
+
+        # 2. UTF-8 with BOM and LF, strip_bom=True -> writes as standard UTF-8 (no BOM), LF
+        utf8_bom_lf = os.path.join(self.test_dir, "bom_lf.txt")
+        with open(utf8_bom_lf, 'wb') as f:
+            f.write(b"\xef\xbb\xbfHello\nWorld\n")
+        
+        self.assertTrue(convert_to_lf(utf8_bom_lf, strip_bom=True))
+        with open(utf8_bom_lf, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\nWorld\n")
+
+        # 3. UTF-8 with BOM and CRLF, strip_bom=False -> retains BOM, LF
+        utf8_bom_keep = os.path.join(self.test_dir, "bom_keep.txt")
+        with open(utf8_bom_keep, 'wb') as f:
+            f.write(b"\xef\xbb\xbfHello\r\nWorld\r\n")
+        
+        self.assertTrue(convert_to_lf(utf8_bom_keep, strip_bom=False))
+        with open(utf8_bom_keep, 'rb') as f:
+            self.assertEqual(f.read(), b"\xef\xbb\xbfHello\nWorld\n")
+
+    def test_traverse_directory_listing_options(self):
+        import io
+        from unittest.mock import patch
+
+        # Create files with different states:
+        # - converted.txt (has CRLF, will convert)
+        # - unchanged.txt (has LF, won't convert)
+        # - binary.png (binary, skipped)
+        
+        converted_file = os.path.join(self.test_dir, "converted.txt")
+        unchanged_file = os.path.join(self.test_dir, "unchanged.txt")
+        binary_file = os.path.join(self.test_dir, "binary.png")
+
+        def reset_files():
+            with open(converted_file, 'wb') as f:
+                f.write(b"Line1\r\nLine2\r\n")
+            with open(unchanged_file, 'wb') as f:
+                f.write(b"Line1\nLine2\n")
+            with open(binary_file, 'wb') as f:
+                f.write(b"\x89PNG\r\n\x1a\n\x00")
+
+        # Test list_mode="changed" (default)
+        reset_files()
+        with patch('sys.stdout', new=io.StringIO()) as fake_out:
+            traverse_directory(self.test_dir, [], [], list_mode="changed")
+            output = fake_out.getvalue()
+            self.assertIn("[✓] Converted", output)
+            self.assertNotIn("[-] Unchanged", output)
+            self.assertNotIn("[S] Skipped/Binary", output)
+
+        # Test list_mode="all"
+        reset_files()
+        with patch('sys.stdout', new=io.StringIO()) as fake_out:
+            traverse_directory(self.test_dir, [], [], list_mode="all")
+            output = fake_out.getvalue()
+            self.assertIn("[✓] Converted", output)
+            self.assertIn("[-] Unchanged", output)
+            self.assertIn("[S] Skipped/Binary", output)
+
+        # Test list_mode="none"
+        reset_files()
+        with patch('sys.stdout', new=io.StringIO()) as fake_out:
+            traverse_directory(self.test_dir, [], [], list_mode="none")
+            output = fake_out.getvalue()
+            self.assertNotIn("[✓] Converted", output)
+            self.assertNotIn("[-] Unchanged", output)
+            self.assertNotIn("[S] Skipped/Binary", output)
+            self.assertIn("Total files scanned:", output) # summary is still printed
+
     def test_is_text_file(self):
         # Text file
         text_file = os.path.join(self.test_dir, "doc.md")
