@@ -22,12 +22,14 @@ def get_config(config_path: str = "config.ini") -> dict:
     
     strip_bom = config.getboolean("Settings", "strip_bom", fallback=False)
     list_mode = config.get("Settings", "list", fallback="changed")
+    auto_confirm = config.getboolean("Settings", "auto_confirm", fallback=False)
     
     return {
         "exclude_dirs": exclude_dirs,
         "exclude_files": exclude_files,
         "strip_bom": strip_bom,
-        "list": list_mode
+        "list": list_mode,
+        "auto_confirm": auto_confirm
     }
 
 def detect_encoding(file_path):
@@ -148,12 +150,12 @@ def should_exclude(name, patterns):
                 return True
     return False
 
-def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, list_mode="changed"):
+def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, list_mode="changed", auto_confirm=False):
     total_files = 0
-    converted_files = 0
-    bom_stripped_files = 0
     skipped_files = 0
+    pending_changes = []
 
+    # 1. Scan Phase
     for root, dirs, files in os.walk(directory):
         # Modify dirs in-place to prevent traversing unwanted metadata/dependency directories
         dirs[:] = [d for d in dirs if not should_exclude(d, exclude_dirs)]
@@ -166,17 +168,24 @@ def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, 
             encoding = detect_encoding(file_path)
             
             if encoding:
-                lf_changed, bom_stripped = convert_to_lf(file_path, encoding, strip_bom=strip_bom)
-                if lf_changed or bom_stripped:
-                    if lf_changed:
-                        converted_files += 1
-                    if bom_stripped:
-                        bom_stripped_files += 1
-                    if list_mode in ('changed', 'all'):
-                        enc_str = f"{encoding} -> utf-8" if bom_stripped else encoding
-                        print(f'[✓] Converted: {file_path} ({enc_str})')
-                else:
+                try:
+                    with open(file_path, 'r', encoding=encoding, newline='') as f:
+                        content = f.read()
+                except (UnicodeDecodeError, LookupError):
                     skipped_files += 1
+                    if list_mode == 'all':
+                        print(f'[S] Skipped/Binary (decode error): {file_path}')
+                    continue
+                
+                has_crlf = '\r\n' in content
+                has_bom = (encoding == 'utf-8-sig')
+
+                lf_changed = has_crlf
+                bom_stripped = has_bom and strip_bom
+
+                if lf_changed or bom_stripped:
+                    pending_changes.append((file_path, encoding, lf_changed, bom_stripped))
+                else:
                     if list_mode == 'all':
                         print(f'[-] Unchanged: {file_path} ({encoding})')
             else:
@@ -184,11 +193,74 @@ def traverse_directory(directory, exclude_dirs, exclude_files, strip_bom=False, 
                 if list_mode == 'all':
                     print(f'[S] Skipped/Binary: {file_path}')
 
+    # 2. Confirmation Phase
+    if not pending_changes:
+        print("\nNo files need to be normalized.")
+        print("\n--- Summary ---")
+        print(f"Total files scanned:    {total_files}")
+        print(f"Files normalized (LF):  0")
+        print(f"BOMs stripped:          0")
+        print(f"Files unchanged/binary: {total_files}")
+        return True
+
+    print("\n--- Pending Changes ---")
+    for file_path, encoding, lf_changed, bom_stripped in pending_changes:
+        change_desc = []
+        if lf_changed:
+            change_desc.append("LF")
+        if bom_stripped:
+            change_desc.append(f"{encoding} -> utf-8")
+        print(f"[P] Pending: {file_path} ({', '.join(change_desc)})")
+
+    if not auto_confirm:
+        try:
+            response = input(f"\nProceed with conversion of {len(pending_changes)} file(s)? [y/N]: ").strip().lower()
+        except KeyboardInterrupt:
+            print("\nAborted.")
+            return False
+        if response not in ('y', 'yes'):
+            print("Aborted.")
+            return False
+
+    # 3. Apply Phase
+    converted_files = 0
+    bom_stripped_files = 0
+    successful_conversions = 0
+
+    for file_path, encoding, lf_changed, bom_stripped in pending_changes:
+        try:
+            with open(file_path, 'r', encoding=encoding, newline='') as f:
+                content = f.read()
+        except Exception:
+            continue
+            
+        if lf_changed:
+            content = content.replace('\r\n', '\n')
+            
+        write_encoding = 'utf-8' if bom_stripped else encoding
+        
+        try:
+            with open(file_path, 'w', encoding=write_encoding, newline='\n') as f:
+                f.write(content)
+        except Exception:
+            continue
+            
+        successful_conversions += 1
+        if lf_changed:
+            converted_files += 1
+        if bom_stripped:
+            bom_stripped_files += 1
+            
+        if list_mode in ('changed', 'all'):
+            enc_str = f"{encoding} -> utf-8" if bom_stripped else encoding
+            print(f'[✓] Converted: {file_path} ({enc_str})')
+
     print("\n--- Summary ---")
     print(f"Total files scanned:    {total_files}")
     print(f"Files normalized (LF):  {converted_files}")
     print(f"BOMs stripped:          {bom_stripped_files}")
-    print(f"Files unchanged/binary: {skipped_files}")
+    print(f"Files unchanged/binary: {total_files - successful_conversions}")
+    return True
 
 def main():
     parser = argparse.ArgumentParser(
@@ -217,6 +289,11 @@ def main():
     parser.add_argument(
         "-l", "--list", type=str, choices=["changed", "all", "none"], default=None,
         help="Flexible listing options: 'changed' (default) lists only converted files, 'all' lists everything, 'none' suppresses individual output."
+    )
+    parser.add_argument(
+        "-y", "--yes", "--auto-confirm", action="store_true", default=None,
+        dest="auto_confirm",
+        help="Force/auto-confirm without interactive prompt."
     )
     
     args = parser.parse_args()
@@ -251,16 +328,18 @@ def main():
     # CLI arguments override config.ini options
     strip_bom = args.strip_bom if args.strip_bom is not None else config["strip_bom"]
     list_mode = args.list if args.list is not None else config["list"]
+    auto_confirm = args.auto_confirm if args.auto_confirm is not None else config["auto_confirm"]
 
     print(f"Scanning: {directory_to_scan}")
     print(f"Excluding directories matching patterns: {', '.join(sorted(exclude_dirs))}")
     print(f"Excluding files matching patterns:       {', '.join(sorted(exclude_files))}")
 
-    traverse_directory(
+    success = traverse_directory(
         directory_to_scan, exclude_dirs, exclude_files,
-        strip_bom=strip_bom, list_mode=list_mode
+        strip_bom=strip_bom, list_mode=list_mode, auto_confirm=auto_confirm
     )
-    print("Conversion complete!")
+    if success:
+        print("Conversion complete!")
 
 if __name__ == "__main__":
     main()

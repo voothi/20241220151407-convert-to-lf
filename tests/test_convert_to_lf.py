@@ -139,7 +139,7 @@ class TestConvertToLF(unittest.TestCase):
         # Test list_mode="changed" (default)
         reset_files()
         with patch('sys.stdout', new=io.StringIO()) as fake_out:
-            traverse_directory(self.test_dir, [], [], list_mode="changed")
+            traverse_directory(self.test_dir, [], [], list_mode="changed", auto_confirm=True)
             output = fake_out.getvalue()
             self.assertIn("[✓] Converted", output)
             self.assertNotIn("[-] Unchanged", output)
@@ -148,7 +148,7 @@ class TestConvertToLF(unittest.TestCase):
         # Test list_mode="all"
         reset_files()
         with patch('sys.stdout', new=io.StringIO()) as fake_out:
-            traverse_directory(self.test_dir, [], [], list_mode="all")
+            traverse_directory(self.test_dir, [], [], list_mode="all", auto_confirm=True)
             output = fake_out.getvalue()
             self.assertIn("[✓] Converted", output)
             self.assertIn("[-] Unchanged", output)
@@ -157,7 +157,7 @@ class TestConvertToLF(unittest.TestCase):
         # Test list_mode="none"
         reset_files()
         with patch('sys.stdout', new=io.StringIO()) as fake_out:
-            traverse_directory(self.test_dir, [], [], list_mode="none")
+            traverse_directory(self.test_dir, [], [], list_mode="none", auto_confirm=True)
             output = fake_out.getvalue()
             self.assertNotIn("[✓] Converted", output)
             self.assertNotIn("[-] Unchanged", output)
@@ -241,7 +241,7 @@ class TestConvertToLF(unittest.TestCase):
         # Run traversal with glob & regex exclusions
         exclude_dirs = [".*", "node_modules", r"re:^build_\d+$"]
         exclude_files = ["*.log"]
-        traverse_directory(self.test_dir, exclude_dirs, exclude_files)
+        traverse_directory(self.test_dir, exclude_dirs, exclude_files, auto_confirm=True)
 
         # Verify excluded files are untouched (still CRLF)
         for fpath in [git_file, node_file, build_file, log_file]:
@@ -257,11 +257,47 @@ class TestConvertToLF(unittest.TestCase):
         # Create a temporary config.ini with Settings
         config_path = os.path.join(self.test_dir, "test_config.ini")
         with open(config_path, "w", encoding="utf-8") as f:
-            f.write("[Settings]\nstrip_bom = true\nlist = all\n")
+            f.write("[Settings]\nstrip_bom = true\nlist = all\nauto_confirm = true\n")
             
         config = get_config(config_path)
         self.assertTrue(config["strip_bom"])
         self.assertEqual(config["list"], "all")
+        self.assertTrue(config["auto_confirm"])
+
+    def test_traverse_directory_interactive_confirm_yes(self):
+        from unittest.mock import patch
+        import io
+        
+        # File needs conversion
+        test_file = os.path.join(self.test_dir, "to_convert.txt")
+        with open(test_file, 'wb') as f:
+            f.write(b"Hello\r\nWorld\r\n")
+            
+        # Mock input to return 'y' (yes)
+        with patch('builtins.input', return_value='y'), patch('sys.stdout', new=io.StringIO()):
+            res = traverse_directory(self.test_dir, [], [], auto_confirm=False)
+            self.assertTrue(res)
+            
+        with open(test_file, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\nWorld\n")
+
+    def test_traverse_directory_interactive_confirm_no(self):
+        from unittest.mock import patch
+        import io
+        
+        # File needs conversion
+        test_file = os.path.join(self.test_dir, "to_convert.txt")
+        with open(test_file, 'wb') as f:
+            f.write(b"Hello\r\nWorld\r\n")
+            
+        # Mock input to return 'n' (no)
+        with patch('builtins.input', return_value='n'), patch('sys.stdout', new=io.StringIO()):
+            res = traverse_directory(self.test_dir, [], [], auto_confirm=False)
+            self.assertFalse(res)
+            
+        # Verify file is UNTOUCHED (still has CRLF)
+        with open(test_file, 'rb') as f:
+            self.assertEqual(f.read(), b"Hello\r\nWorld\r\n")
 
 if __name__ == "__main__":
     unittest.main()
